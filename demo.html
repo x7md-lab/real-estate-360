@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>360° Interactive Virtual Tour</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #000;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+            cursor: move;
+        }
+
+        /* Overlay UI */
+        .ui-overlay {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 50px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            z-index: 100;
+        }
+
+        .view-btn {
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        .view-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .view-btn.active {
+            background: #fff;
+            color: #000;
+            font-weight: bold;
+        }
+
+        .info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            pointer-events: none;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .info-panel h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        .info-panel p {
+            margin: 5px 0;
+            opacity: 0.8;
+        }
+
+        /* Loading Indicator */
+        #loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #111;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 1000;
+            transition: opacity 0.5s ease;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-left-color: #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loader">
+        <div class="spinner"></div>
+        <div id="loading-text">Loading Texture...</div>
+    </div>
+
+    <div class="info-panel">
+        <h1 id="scene-title">Al-Khalil Road</h1>
+        <p>Interactive 360° View</p>
+    </div>
+
+    <div id="container"></div>
+
+    <div class="ui-overlay">
+        <button class="view-btn active" onclick="loadScene('IMG_9698.jpeg', this)">View 1</button>
+        <button class="view-btn" onclick="loadScene('IMG_9697.jpeg', this)">View 2</button>
+        <button class="view-btn" onclick="loadScene('IMG_9696.jpeg', this)">View 3</button>
+        <button class="view-btn" onclick="loadScene('IMG_9695.jpeg', this)">View 4</button>
+    </div>
+
+    <script>
+        let camera, scene, renderer, sphere;
+        let isUserInteracting = false,
+            onPointerDownPointerX = 0, onPointerDownPointerY = 0,
+            lon = 0, onPointerDownLon = 0,
+            lat = 0, onPointerDownLat = 0,
+            phi = 0, theta = 0;
+
+        function getAssetPath(filename) {
+            // Ensure path starts with / for local assets in this environment
+            return filename.startsWith('/') ? filename : `/${filename}`;
+        }
+
+        init();
+        animate();
+
+        function init() {
+            const container = document.getElementById('container');
+
+            // 1. Scene Setup
+            scene = new THREE.Scene();
+
+            // 2. Camera Setup
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 1100);
+            camera.target = new THREE.Vector3(0, 0, 0);
+
+            // 3. Geometry (The Sphere)
+            const geometry = new THREE.SphereGeometry(500, 60, 40);
+            geometry.scale(-1, 1, 1);
+
+            const material = new THREE.MeshBasicMaterial({ color: 0x000000 });
+            sphere = new THREE.Mesh(geometry, material);
+            scene.add(sphere);
+
+            // 4. Renderer Setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            container.appendChild(renderer.domElement);
+
+            // 5. Interaction Listeners
+            container.addEventListener('pointerdown', onPointerDown);
+            container.addEventListener('wheel', onDocumentMouseWheel);
+            window.addEventListener('resize', onWindowResize);
+
+            // Load Initial Texture
+            loadScene('IMG_9698.jpeg');
+        }
+
+        function loadScene(imagePath, btnElement) {
+            const loaderEl = document.getElementById('loader');
+            const loadingText = document.getElementById('loading-text');
+            
+            loaderEl.style.display = 'flex';
+            loaderEl.style.opacity = '1';
+            loadingText.innerText = "Loading View...";
+
+            if (btnElement) {
+                document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
+                btnElement.classList.add('active');
+            }
+
+            const fullPath = getAssetPath(imagePath);
+
+            // Manual image loading to bypass common THREE.TextureLoader restrictions in sandboxes
+            const img = new Image();
+            img.crossOrigin = "anonymous"; 
+            
+            img.onload = function() {
+                const texture = new THREE.Texture(img);
+                texture.needsUpdate = true;
+                
+                if (sphere.material.map) sphere.material.map.dispose();
+                sphere.material.map = texture;
+                sphere.material.color.set(0xffffff); // Ensure color is white to show texture
+                sphere.material.needsUpdate = true;
+                
+                setTimeout(() => {
+                    loaderEl.style.opacity = '0';
+                    setTimeout(() => { loaderEl.style.display = 'none'; }, 500);
+                }, 300);
+            };
+
+            img.onerror = function(err) {
+                console.error("Manual Image Load Error:", err);
+                loadingText.innerText = `Failed to load: ${imagePath}. Please check if the file was uploaded successfully.`;
+            };
+
+            img.src = fullPath;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onPointerDown(event) {
+            if (event.isPrimary === false) return;
+            isUserInteracting = true;
+            onPointerDownPointerX = event.clientX;
+            onPointerDownPointerY = event.clientY;
+            onPointerDownLon = lon;
+            onPointerDownLat = lat;
+            document.addEventListener('pointermove', onPointerMove);
+            document.addEventListener('pointerup', onPointerUp);
+        }
+
+        function onPointerMove(event) {
+            if (event.isPrimary === false) return;
+            lon = (onPointerDownPointerX - event.clientX) * 0.1 + onPointerDownLon;
+            lat = (event.clientY - onPointerDownPointerY) * 0.1 + onPointerDownLat;
+        }
+
+        function onPointerUp() {
+            isUserInteracting = false;
+            document.removeEventListener('pointermove', onPointerMove);
+            document.removeEventListener('pointerup', onPointerUp);
+        }
+
+        function onDocumentMouseWheel(event) {
+            const fov = camera.fov + event.deltaY * 0.05;
+            camera.fov = THREE.MathUtils.clamp(fov, 10, 75);
+            camera.updateProjectionMatrix();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            update();
+        }
+
+        function update() {
+            lat = Math.max(-85, Math.min(85, lat));
+            phi = THREE.MathUtils.degToRad(90 - lat);
+            theta = THREE.MathUtils.degToRad(lon);
+            const x = 500 * Math.sin(phi) * Math.cos(theta);
+            const y = 500 * Math.cos(phi);
+            const z = 500 * Math.sin(phi) * Math.sin(theta);
+            camera.lookAt(x, y, z);
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>

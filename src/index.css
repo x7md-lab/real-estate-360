@@ -1,0 +1,21 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  overflow: hidden;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #000;
+  /* Prevent pull-to-refresh and bounce on mobile */
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
+#root {
+  width: 100vw;
+  height: 100dvh; /* dynamic viewport height - handles mobile address bar */
+  height: 100vh; /* fallback */
+}
