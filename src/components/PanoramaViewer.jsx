@@ -124,6 +124,7 @@ export default function PanoramaViewer({
     const wmMat = new THREE.MeshBasicMaterial({
       map: wmTexture,
       transparent: true,
+      opacity: 0.2,
       depthTest: false,
       depthWrite: false,
     })
